@@ -11,8 +11,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/DataDog/datadog-go/v5/statsd"
 )
 
 // pollFrequency is the frequency at which we poll runtime/metrics and report
@@ -99,9 +97,6 @@ type partialStatsdClientInterface interface {
 	GaugeWithTimestamp(name string, value float64, tags []string, rate float64, timestamp time.Time) error
 	CountWithTimestamp(name string, value int64, tags []string, rate float64, timestamp time.Time) error
 }
-
-// ensure the type subset invariant at compile time.
-var _ partialStatsdClientInterface = statsd.ClientInterface(nil)
 
 func newRuntimeMetricStore(descs []metrics.Description, statsdClient partialStatsdClientInterface, logger *slog.Logger) runtimeMetricStore {
 	rms := runtimeMetricStore{
