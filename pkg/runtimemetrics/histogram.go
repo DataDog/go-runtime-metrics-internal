@@ -5,7 +5,7 @@ import (
 	"runtime/metrics"
 	"sort"
 
-	"golang.org/x/exp/slices"
+	"slices"
 )
 
 // As of 2023/04, the statsd client does not support sending fully formed
