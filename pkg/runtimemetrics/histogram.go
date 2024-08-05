@@ -3,9 +3,8 @@ package runtimemetrics
 import (
 	"math"
 	"runtime/metrics"
-	"sort"
-
 	"slices"
+	"sort"
 )
 
 // As of 2023/04, the statsd client does not support sending fully formed
