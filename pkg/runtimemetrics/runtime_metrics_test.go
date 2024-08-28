@@ -256,3 +256,25 @@ func createLockContention(d time.Duration) {
 	}
 	wg.Wait()
 }
+func TestFormatByteSize(t *testing.T) {
+	t.Run("should format byte size correctly", func(t *testing.T) {
+		tests := []struct {
+			bytes    int64
+			expected string
+		}{
+			{0, "0 B"},
+			{1023, "1023 B"},
+			{1024, "1 KB"},
+			{1024 * 1024, "1 MB"},
+			{1024 * 1024 * 1024, "1 GB"},
+			{1024 * 1024 * 1024 * 1024, "1 TB"},
+			{1024 * 1024 * 1024 * 1024 * 1024, "1 PB"},
+			{1024 * 1024 * 1024 * 1024 * 1024 * 1024, "1 EB"},
+		}
+
+		for _, test := range tests {
+			result := formatByteSize(test.bytes)
+			assert.Equal(t, test.expected, result)
+		}
+	})
+}
