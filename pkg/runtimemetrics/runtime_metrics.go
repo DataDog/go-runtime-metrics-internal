@@ -161,15 +161,6 @@ func (rms runtimeMetricStore) report() {
 		switch rm.currentValue.Kind() {
 		case metrics.KindUint64:
 			v := rm.currentValue.Uint64()
-			// if the value didn't change between two reporting
-			// cycles, don't submit anything. this avoids having
-			// inaccurate drops to zero
-			// we submit 0 values to be able to distinguish between
-			// cases where the metric was never reported as opposed
-			// to the metric always being equal to zero
-			if rm.cumulative && v != 0 && v == rm.previousValue.Uint64() {
-				continue
-			}
 
 			// Some of the Uint64 metrics are actually calculated as a difference by the Go runtime: v = uint64(x - y)
 			//
@@ -211,16 +202,6 @@ func (rms runtimeMetricStore) report() {
 
 			rms.statsd.GaugeWithTimestamp(rm.ddMetricName, float64(v), nil, 1, rm.timestamp)
 		case metrics.KindFloat64:
-			v := rm.currentValue.Float64()
-			// if the value didn't change between two reporting
-			// cycles, don't submit anything. this avoids having
-			// inaccurate drops to zero
-			// we submit 0 values to be able to distinguish between
-			// cases where the metric was never reported as opposed
-			// to the metric always being equal to zero
-			if rm.cumulative && v != 0 && v == rm.previousValue.Float64() {
-				continue
-			}
 			rms.statsd.GaugeWithTimestamp(rm.ddMetricName, v, nil, 1, rm.timestamp)
 		case metrics.KindFloat64Histogram:
 			v := rm.currentValue.Float64Histogram()
