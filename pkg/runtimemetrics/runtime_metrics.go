@@ -324,15 +324,15 @@ func datadogMetricName(runtimeName string) (string, error) {
 func formatByteSize(bytes int64) string {
 	const (
 		unit   = 1024
-		format = "%.2f %s"
+		format = "%.0f %sB"
 	)
 	if bytes < unit {
-		return fmt.Sprintf(format, float64(bytes), "B")
+		return fmt.Sprintf(format, float64(bytes), "")
 	}
 	div, exp := int64(unit), 0
 	for n := bytes / unit; n >= unit; n /= unit {
 		div *= unit
 		exp++
 	}
-	return fmt.Sprintf(format, float64(bytes)/float64(div), "KMGTPE"[exp])
+	return fmt.Sprintf(format, float64(bytes)/float64(div), string("KMGTPE"[exp]))
 }
