@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math"
 	"regexp"
+	"runtime"
 	"runtime/debug"
 	"runtime/metrics"
 	"strconv"
@@ -102,9 +103,10 @@ type partialStatsdClientInterface interface {
 }
 
 func newRuntimeMetricStore(descs []metrics.Description, statsdClient partialStatsdClientInterface, logger *slog.Logger) runtimeMetricStore {
-	// Load GOMEMLIMIT and GOGC and store their value.
+	// Load GOMEMLIMIT, GOMAXPROCS and GOGC and store their value.
 	// They will be used to tag runtime metrics accordingly.
 	GOMEMLIMIT := debug.SetMemoryLimit(-1)
+	GOMAXPROCS := runtime.GOMAXPROCS(-1)
 
 	// There is no read-only accessor of the current GC limit: see https://github.com/golang/go/issues/39419
 	// So instead, we set it to 100%, then set it back to the previous value.
@@ -128,10 +130,14 @@ func newRuntimeMetricStore(descs []metrics.Description, statsdClient partialStat
 	}
 
 	rms := runtimeMetricStore{
-		metrics:  map[string]*runtimeMetric{},
-		statsd:   statsdClient,
-		logger:   logger,
-		baseTags: []string{"gogc:" + goGCTagValue, "gomemlimit:" + goMemLimitTagValue},
+		metrics: map[string]*runtimeMetric{},
+		statsd:  statsdClient,
+		logger:  logger,
+		baseTags: []string{
+			"gogc:" + goGCTagValue,
+			"gomemlimit:" + goMemLimitTagValue,
+			"gomaxprocs:" + strconv.Itoa(GOMAXPROCS),
+		},
 	}
 
 	for _, d := range descs {
