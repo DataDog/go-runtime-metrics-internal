@@ -7,10 +7,7 @@ import (
 	"log/slog"
 	"math"
 	"regexp"
-	"runtime"
-	"runtime/debug"
 	"runtime/metrics"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -103,41 +100,11 @@ type partialStatsdClientInterface interface {
 }
 
 func newRuntimeMetricStore(descs []metrics.Description, statsdClient partialStatsdClientInterface, logger *slog.Logger) runtimeMetricStore {
-	// Load GOMEMLIMIT, GOMAXPROCS and GOGC and store their value.
-	// They will be used to tag runtime metrics accordingly.
-	GOMEMLIMIT := debug.SetMemoryLimit(-1)
-	GOMAXPROCS := runtime.GOMAXPROCS(-1)
-
-	// There is no read-only accessor of the current GC limit: see https://github.com/golang/go/issues/39419
-	// So instead, we set it to 100%, then set it back to the previous value.
-	GOGC := debug.SetGCPercent(100)
-	debug.SetGCPercent(GOGC)
-
-	var goGCTagValue string
-	if GOGC < 0 {
-		// Using strict (not loose) equality because GOGC=0 is not equivalent to off: https://github.com/golang/go/issues/39419#issuecomment-640066815
-		goGCTagValue = "off"
-	} else {
-		goGCTagValue = strconv.Itoa(GOGC)
-	}
-
-	var goMemLimitTagValue string
-	if GOMEMLIMIT == math.MaxInt64 {
-		goMemLimitTagValue = "unlimited"
-	} else {
-		// Convert GOMEMLIMIT to a human-readable string with the right byte unit
-		goMemLimitTagValue = formatByteSize(GOMEMLIMIT)
-	}
-
 	rms := runtimeMetricStore{
-		metrics: map[string]*runtimeMetric{},
-		statsd:  statsdClient,
-		logger:  logger,
-		baseTags: []string{
-			"gogc:" + goGCTagValue,
-			"gomemlimit:" + goMemLimitTagValue,
-			"gomaxprocs:" + strconv.Itoa(GOMAXPROCS),
-		},
+		metrics:  map[string]*runtimeMetric{},
+		statsd:   statsdClient,
+		logger:   logger,
+		baseTags: getBaseTags(),
 	}
 
 	for _, d := range descs {
@@ -324,21 +291,4 @@ func datadogMetricName(runtimeName string) (string, error) {
 	// Note: This prefix is special. Don't change it without consulting the
 	// runtime/metrics squad.
 	return "runtime.go.metrics." + name, nil
-}
-
-// Function to format byte size with the right unit
-func formatByteSize(bytes int64) string {
-	const (
-		unit   = 1024
-		format = "%.0f %sB"
-	)
-	if bytes < unit {
-		return fmt.Sprintf(format, float64(bytes), "")
-	}
-	div, exp := int64(unit), 0
-	for n := bytes / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf(format, float64(bytes)/float64(div), string("KMGTPE"[exp]))
 }
