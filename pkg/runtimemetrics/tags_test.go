@@ -39,6 +39,8 @@ func TestGetBaseTags(t *testing.T) {
 			"154",
 		},
 		{
+			// GOGC=0 means that the GC is running continuously
+			// https://github.com/golang/go/issues/39419#issuecomment-640066815
 			"should return zero when gogc is zero",
 			0,
 			"0",
@@ -109,13 +111,13 @@ func TestFormatByteSize(t *testing.T) {
 		}{
 			{0, "0 B"},
 			{1023, "1023 B"},
-			{1024, "1 KB"},
-			{1025, "1 KB"},
-			{1024 * 1024, "1 MB"},
-			{1024 * 1024 * 1024, "1 GB"},
-			{1024 * 1024 * 1024 * 1024, "1 TB"},
-			{1024 * 1024 * 1024 * 1024 * 1024, "1 PB"},
-			{1024 * 1024 * 1024 * 1024 * 1024 * 1024, "1 EB"},
+			{1024, "1 KiB"},
+			{1025, "1 KiB"},
+			{1024 * 1024, "1 MiB"},
+			{1024 * 1024 * 1024, "1 GiB"},
+			{1024 * 1024 * 1024 * 1024, "1 TiB"},
+			{1024 * 1024 * 1024 * 1024 * 1024, "1 PiB"},
+			{1024 * 1024 * 1024 * 1024 * 1024 * 1024, "1 EiB"},
 		}
 
 		for _, test := range tests {

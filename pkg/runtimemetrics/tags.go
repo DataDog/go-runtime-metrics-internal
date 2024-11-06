@@ -11,13 +11,13 @@ const gomemlimitMetricName = "/gc/gomemlimit:bytes"
 const gomaxProcsMetricName = "/sched/gomaxprocs:threads"
 
 func getBaseTags() []string {
-	baseTags := make([]string, 0, 3)
-
 	samples := []metrics.Sample{
 		{Name: gogcMetricName},
 		{Name: gomemlimitMetricName},
 		{Name: gomaxProcsMetricName},
 	}
+
+	baseTags := make([]string, 0, len(samples))
 
 	metrics.Read(samples)
 
@@ -65,5 +65,5 @@ func formatByteSize(bytes uint64) string {
 		div *= unit
 		exp++
 	}
-	return fmt.Sprintf(format, float64(bytes)/float64(div), string("KMGTPE"[exp]))
+	return fmt.Sprintf(format, float64(bytes)/float64(div), string("KMGTPE"[exp])+"i")
 }
