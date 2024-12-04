@@ -12,7 +12,7 @@ on:
 jobs:
   test:
     runs-on:
-      group: "APM Larger Runners"
+      group: "Large Runner Shared Public"
     steps:
     - uses: actions/checkout@v4
 
