@@ -8,6 +8,21 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestHistogramToDistributionSamples(t *testing.T) {
+	t.Run("should correctly convert a given histogram to distribution samples", func(t *testing.T) {
+		h := &metrics.Float64Histogram{
+			Counts:  []uint64{1, 0, 10},
+			Buckets: []float64{0, 10, 20, 30},
+		}
+		s := distributionSamplesFromHist(h, nil)
+		assert.Len(t, s, 2)
+		assert.Equal(t, s, []distributionSample{
+			{Value: 5, Rate: 1},
+			{Value: 25, Rate: 0.1},
+		})
+	})
+}
+
 func TestHistogramSub(t *testing.T) {
 	t.Run("should correctly compute the substraction of two given histograms", func(t *testing.T) {
 		a := &metrics.Float64Histogram{

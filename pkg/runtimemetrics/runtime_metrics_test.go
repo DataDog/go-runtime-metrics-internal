@@ -152,6 +152,17 @@ func TestMetricKinds(t *testing.T) {
 					t.Errorf("missing %s metric", want)
 				}
 			}
+			found := false
+			want := ".gc_pauses.seconds"
+			for _, call := range mock.distributionSampleCall {
+				if strings.HasSuffix(call.name, want) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("missing %s metric", want)
+			}
 			rms.report()
 			// Note: No GC cycle is expected to occur here
 			require.Equal(t, len(summaries), len(mock.gaugeCall))
@@ -187,6 +198,8 @@ func TestSmoke(t *testing.T) {
 	// to catch severe regression. Might need to be updated in the future if
 	// lots of new metrics are added.
 	assert.InDelta(t, 87, len(mock.gaugeCall), 87/2) // typically 87
+
+	assert.Positive(t, len(mock.distributionSampleCall))
 }
 
 // BenchmarkReport is used to determine the overhead of collecting all metrics
