@@ -14,12 +14,13 @@ jobs:
     runs-on:
       group: "Large Runner Shared Public"
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.21'
+        go-version: '1.22'
 
     - name: Test
       run: go test -v ./...
