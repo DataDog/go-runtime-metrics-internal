@@ -9,8 +9,9 @@ type statsdClientMock struct {
 	// Discard causes all calls to be discarded rather than tracked.
 	Discard bool
 
-	gaugeCall []statsdCall[float64]
-	countCall []statsdCall[int64]
+	gaugeCall              []statsdCall[float64]
+	countCall              []statsdCall[int64]
+	distributionSampleCall []statsdCall[[]float64]
 }
 
 // GaugeWithTimestamp implements partialStatsdClientInterface.
@@ -41,7 +42,20 @@ func (s *statsdClientMock) CountWithTimestamp(name string, value int64, tags []s
 	return nil
 }
 
-type statsdCall[T int64 | float64] struct {
+func (s *statsdClientMock) DistributionSamples(name string, values []float64, tags []string, rate float64) error {
+	if s.Discard {
+		return nil
+	}
+	s.distributionSampleCall = append(s.distributionSampleCall, statsdCall[[]float64]{
+		name:  name,
+		value: values,
+		tags:  tags,
+		rate:  rate,
+	})
+	return nil
+}
+
+type statsdCall[T int64 | float64 | []float64] struct {
 	name  string
 	value T
 	tags  []string

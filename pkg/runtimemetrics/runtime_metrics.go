@@ -97,6 +97,7 @@ type partialStatsdClientInterface interface {
 	// The rate is forwarded to the agent but then discarded for gauge metrics.
 	GaugeWithTimestamp(name string, value float64, tags []string, rate float64, timestamp time.Time) error
 	CountWithTimestamp(name string, value int64, tags []string, rate float64, timestamp time.Time) error
+	DistributionSamples(name string, values []float64, tags []string, rate float64) error
 }
 
 func newRuntimeMetricStore(descs []metrics.Description, statsdClient partialStatsdClientInterface, logger *slog.Logger) runtimeMetricStore {
@@ -159,6 +160,8 @@ func (rms runtimeMetricStore) update() {
 
 func (rms runtimeMetricStore) report() {
 	rms.update()
+	samples := []distributionSample{}
+
 	for name, rm := range rms.metrics {
 		switch rm.currentValue.Kind() {
 		case metrics.KindUint64:
@@ -240,6 +243,15 @@ func (rms runtimeMetricStore) report() {
 					continue
 				}
 			}
+
+			samples = samples[:0]
+			distSamples := distributionSamplesFromHist(v, samples)
+			values := make([]float64, len(distSamples))
+			for i, ds := range distSamples {
+				values[i] = ds.Value
+				rms.statsd.DistributionSamples(rm.ddMetricName, values[i:i+1], rms.baseTags, ds.Rate)
+			}
+
 			stats := statsFromHist(v)
 			// TODO: Could/should we use datadog distribution metrics for this?
 			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".avg", stats.Avg, rms.baseTags, 1, rm.timestamp)
