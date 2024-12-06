@@ -10,4 +10,4 @@ Instead, simply run `go get github.com/DataDog/go-runtime-metrics-internal@<comm
 
 For more details see [this comment](https://github.com/DataDog/go-runtime-metrics-internal/issues/10#issuecomment-2522535398).
 
-Alternatively could release this module as v1, and tag new major versions when we do breaking changes. But it seems like this would be more work, so pseudo-versions should be okay for now.
+Alternatively we could release this module as v1, and tag new major versions when we do breaking changes. But it seems like this would be more work, so pseudo-versions should be okay for now.
