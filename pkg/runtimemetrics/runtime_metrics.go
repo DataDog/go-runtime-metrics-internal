@@ -38,7 +38,7 @@ var enabled bool
 // stop method.
 
 // Start starts reporting runtime/metrics to the given statsd client.
-func Start(statsd partialStatsdClientInterface, logger *slog.Logger) error {
+func Start(statsd partialStatsdClientInterface, baseTags []string, logger *slog.Logger) error {
 	mu.Lock()
 	defer mu.Unlock()
 
@@ -49,7 +49,7 @@ func Start(statsd partialStatsdClientInterface, logger *slog.Logger) error {
 	}
 
 	descs := metrics.All()
-	rms := newRuntimeMetricStore(descs, statsd, logger)
+	rms := newRuntimeMetricStore(descs, statsd, baseTags, logger)
 	// TODO: Go services experiencing high scheduling latency might see a
 	// large variance for the period in between rms.report calls. This might
 	// cause spikes in cumulative metric reporting. Should we try to correct
@@ -100,12 +100,12 @@ type partialStatsdClientInterface interface {
 	DistributionSamples(name string, values []float64, tags []string, rate float64) error
 }
 
-func newRuntimeMetricStore(descs []metrics.Description, statsdClient partialStatsdClientInterface, logger *slog.Logger) runtimeMetricStore {
+func newRuntimeMetricStore(descs []metrics.Description, statsdClient partialStatsdClientInterface, baseTags []string, logger *slog.Logger) runtimeMetricStore {
 	rms := runtimeMetricStore{
 		metrics:  map[string]*runtimeMetric{},
 		statsd:   statsdClient,
 		logger:   logger,
-		baseTags: getBaseTags(),
+		baseTags: append(getBaseTags(), baseTags...),
 	}
 
 	for _, d := range descs {
