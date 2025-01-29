@@ -4,11 +4,16 @@ import (
 	"fmt"
 	"math"
 	"runtime/metrics"
+	"sync"
 )
 
 const gogcMetricName = "/gc/gogc:percent"
 const gomemlimitMetricName = "/gc/gomemlimit:bytes"
 const gomaxProcsMetricName = "/sched/gomaxprocs:threads"
+
+// muTags protects rootBaseTags
+var muTags sync.Mutex
+var rootBaseTags []string
 
 func getBaseTags() []string {
 	samples := []metrics.Sample{
@@ -47,6 +52,10 @@ func getBaseTags() []string {
 			baseTags = append(baseTags, fmt.Sprintf("gomaxprocs:%d", gomaxprocs))
 		}
 	}
+
+	muTags.Lock()
+	baseTags = append(baseTags, rootBaseTags...)
+	muTags.Unlock()
 
 	return baseTags
 }
