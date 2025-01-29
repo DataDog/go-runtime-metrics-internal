@@ -24,10 +24,10 @@ func TestStart(t *testing.T) {
 
 	t.Run("start returns an error when called successively", func(t *testing.T) {
 		t.Cleanup(cleanup)
-		err := Start(&statsdClientMock{}, slog.Default())
+		err := Start(&statsdClientMock{}, nil, slog.Default())
 		assert.NoError(t, err)
 
-		err = Start(&statsdClientMock{}, slog.Default())
+		err = Start(&statsdClientMock{}, nil, slog.Default())
 		assert.Error(t, err)
 	})
 
@@ -37,7 +37,7 @@ func TestStart(t *testing.T) {
 		for i := 0; i < 10; i++ {
 			wg.Add(1)
 			go func() {
-				Start(&statsdClientMock{}, slog.Default())
+				Start(&statsdClientMock{}, nil, slog.Default())
 				wg.Done()
 			}()
 		}
@@ -181,7 +181,7 @@ func TestSmoke(t *testing.T) {
 	// Initialize store for all metrics with a mocked statsd client.
 	descs := metrics.All()
 	mock := &statsdClientMock{}
-	rms := newRuntimeMetricStore(descs, mock, slog.Default())
+	rms := newRuntimeMetricStore(descs, mock, nil, slog.Default())
 
 	// This poulates most runtime/metrics.
 	runtime.GC()
@@ -209,7 +209,7 @@ func BenchmarkReport(b *testing.B) {
 	// Initialize store for all metrics with a mocked statsd client.
 	descs := metrics.All()
 	mock := &statsdClientMock{Discard: true}
-	rms := newRuntimeMetricStore(descs, mock, slog.Default())
+	rms := newRuntimeMetricStore(descs, mock, nil, slog.Default())
 
 	// Benchmark report method
 	b.ReportAllocs()
@@ -226,7 +226,7 @@ func BenchmarkReport(b *testing.B) {
 func reportMetric(name string, kind metrics.ValueKind) (*statsdClientMock, runtimeMetricStore) {
 	desc := metricDesc(name, kind)
 	mock := &statsdClientMock{}
-	rms := newRuntimeMetricStore([]metrics.Description{desc}, mock, slog.Default())
+	rms := newRuntimeMetricStore([]metrics.Description{desc}, mock, nil, slog.Default())
 	// Populate Metrics. Test implicitly expect this to be the only GC cycle to happen before report is finished.
 	runtime.GC()
 	rms.report()
