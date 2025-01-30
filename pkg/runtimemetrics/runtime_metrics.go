@@ -72,6 +72,13 @@ func Start(statsd partialStatsdClientInterface, logger *slog.Logger) error {
 	return nil
 }
 
+func SetBaseTags(tags []string) {
+	muTags.Lock()
+	defer muTags.Unlock()
+
+	rootBaseTags = tags
+}
+
 type runtimeMetric struct {
 	ddMetricName string
 	cumulative   bool
