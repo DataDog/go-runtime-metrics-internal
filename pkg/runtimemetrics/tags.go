@@ -3,6 +3,7 @@ package runtimemetrics
 import (
 	"fmt"
 	"math"
+	"runtime"
 	"runtime/metrics"
 	"sync"
 )
@@ -22,7 +23,8 @@ func getBaseTags() []string {
 		{Name: gomaxProcsMetricName},
 	}
 
-	baseTags := make([]string, 0, len(samples))
+	baseTags := make([]string, 0, len(samples)+1)
+	baseTags = append(baseTags, "goversion:"+runtime.Version())
 
 	metrics.Read(samples)
 

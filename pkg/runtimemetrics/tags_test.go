@@ -101,6 +101,11 @@ func TestGetBaseTags(t *testing.T) {
 		tags := getBaseTags()
 		assertTagValue(t, "gomaxprocs", "42", tags)
 	})
+
+	t.Run("should return the correct goversion", func(t *testing.T) {
+		tags := getBaseTags()
+		assertTagValue(t, "goversion", runtime.Version(), tags)
+	})
 }
 
 func TestFormatByteSize(t *testing.T) {
