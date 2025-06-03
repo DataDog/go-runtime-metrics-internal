@@ -167,6 +167,7 @@ func (rms runtimeMetricStore) report() {
 	rms.update()
 	samples := []distributionSample{}
 
+	rms.statsd.GaugeWithTimestamp(datadogMetricPrefix+"enabled", 1, rms.baseTags, 1, ts)
 	for name, rm := range rms.metrics {
 		switch rm.currentValue.Kind() {
 		case metrics.KindUint64:
