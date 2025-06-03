@@ -192,7 +192,7 @@ func (rms runtimeMetricStore) report() {
 				tags := make([]string, 0, len(rms.baseTags)+1)
 				tags = append(tags, rms.baseTags...)
 				tags = append(tags, "metric_name:"+rm.ddMetricName)
-				rms.statsd.CountWithTimestamp("runtime.go.metrics.skipped_values", 1, tags, 1, ts)
+				rms.statsd.CountWithTimestamp(datadogMetricPrefix+"skipped_values", 1, tags, 1, ts)
 
 				// Some metrics are ~sort of expected to report this high value (e.g.
 				// "runtime.go.metrics.gc_gogc.percent" will consistently report "MaxUint64 - 1" if
@@ -292,6 +292,8 @@ var runtimeMetricRegex = regexp.MustCompile("^(?P<name>/[^:]+):(?P<unit>[^:*/]+(
 // see https://docs.datadoghq.com/metrics/custom_metrics/#naming-custom-metrics
 var datadogMetricRegex = regexp.MustCompile(`[^a-zA-Z0-9\._]`)
 
+const datadogMetricPrefix = "runtime.go.metrics."
+
 func datadogMetricName(runtimeName string) (string, error) {
 	m := runtimeMetricRegex.FindStringSubmatch(runtimeName)
 
@@ -307,5 +309,5 @@ func datadogMetricName(runtimeName string) (string, error) {
 
 	// Note: This prefix is special. Don't change it without consulting the
 	// runtime/metrics squad.
-	return "runtime.go.metrics." + name, nil
+	return datadogMetricPrefix + name, nil
 }
