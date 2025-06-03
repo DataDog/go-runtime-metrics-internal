@@ -85,7 +85,6 @@ type runtimeMetric struct {
 
 	currentValue  metrics.Value
 	previousValue metrics.Value
-	timestamp     time.Time
 }
 
 // the map key is the name of the metric in runtime/metrics
@@ -155,17 +154,16 @@ func (rms runtimeMetricStore) update() {
 		i++
 	}
 	metrics.Read(samples)
-	timestamp := time.Now()
 	for _, s := range samples {
 		runtimeMetric := rms.metrics[s.Name]
 
 		runtimeMetric.previousValue = runtimeMetric.currentValue
 		runtimeMetric.currentValue = s.Value
-		runtimeMetric.timestamp = timestamp
 	}
 }
 
 func (rms runtimeMetricStore) report() {
+	ts := time.Now()
 	rms.update()
 	samples := []distributionSample{}
 
@@ -194,7 +192,7 @@ func (rms runtimeMetricStore) report() {
 				tags := make([]string, 0, len(rms.baseTags)+1)
 				tags = append(tags, rms.baseTags...)
 				tags = append(tags, "metric_name:"+rm.ddMetricName)
-				rms.statsd.CountWithTimestamp("runtime.go.metrics.skipped_values", 1, tags, 1, rm.timestamp)
+				rms.statsd.CountWithTimestamp("runtime.go.metrics.skipped_values", 1, tags, 1, ts)
 
 				// Some metrics are ~sort of expected to report this high value (e.g.
 				// "runtime.go.metrics.gc_gogc.percent" will consistently report "MaxUint64 - 1" if
@@ -203,7 +201,7 @@ func (rms runtimeMetricStore) report() {
 				if name == "/memory/classes/heap/unused:bytes" {
 					logAttrs := []any{
 						slog.Attr{Key: "metric_name", Value: slog.StringValue(rm.ddMetricName)},
-						slog.Attr{Key: "timestamp", Value: slog.TimeValue(rm.timestamp)},
+						slog.Attr{Key: "timestamp", Value: slog.TimeValue(ts)},
 						slog.Attr{Key: "uint64(x-y)", Value: slog.Uint64Value(v)},
 						slog.Attr{
 							// If v is very close to MaxUint64, it will be hard to read "how negative was x-y", so we compute it here for convenience:
@@ -224,7 +222,7 @@ func (rms runtimeMetricStore) report() {
 				continue
 			}
 
-			rms.statsd.GaugeWithTimestamp(rm.ddMetricName, float64(v), rms.baseTags, 1, rm.timestamp)
+			rms.statsd.GaugeWithTimestamp(rm.ddMetricName, float64(v), rms.baseTags, 1, ts)
 		case metrics.KindFloat64:
 			v := rm.currentValue.Float64()
 			// if the value didn't change between two reporting
@@ -236,7 +234,7 @@ func (rms runtimeMetricStore) report() {
 			if rm.cumulative && v != 0 && v == rm.previousValue.Float64() {
 				continue
 			}
-			rms.statsd.GaugeWithTimestamp(rm.ddMetricName, v, rms.baseTags, 1, rm.timestamp)
+			rms.statsd.GaugeWithTimestamp(rm.ddMetricName, v, rms.baseTags, 1, ts)
 		case metrics.KindFloat64Histogram:
 			v := rm.currentValue.Float64Histogram()
 			var equal bool
@@ -261,12 +259,12 @@ func (rms runtimeMetricStore) report() {
 
 			stats := statsFromHist(v)
 			// TODO: Could/should we use datadog distribution metrics for this?
-			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".avg", stats.Avg, rms.baseTags, 1, rm.timestamp)
-			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".min", stats.Min, rms.baseTags, 1, rm.timestamp)
-			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".max", stats.Max, rms.baseTags, 1, rm.timestamp)
-			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".median", stats.Median, rms.baseTags, 1, rm.timestamp)
-			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".p95", stats.P95, rms.baseTags, 1, rm.timestamp)
-			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".p99", stats.P99, rms.baseTags, 1, rm.timestamp)
+			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".avg", stats.Avg, rms.baseTags, 1, ts)
+			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".min", stats.Min, rms.baseTags, 1, ts)
+			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".max", stats.Max, rms.baseTags, 1, ts)
+			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".median", stats.Median, rms.baseTags, 1, ts)
+			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".p95", stats.P95, rms.baseTags, 1, ts)
+			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".p99", stats.P99, rms.baseTags, 1, ts)
 		case metrics.KindBad:
 			// This should never happen because all metrics are supported
 			// by construction.
