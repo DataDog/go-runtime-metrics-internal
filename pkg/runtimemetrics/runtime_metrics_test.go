@@ -84,7 +84,7 @@ func TestMetricKinds(t *testing.T) {
 			runtime.GC()
 			runtime.GC()
 			rms.report()
-			calls := mockCallsWithSuffix(t, mock.gaugeCall, ".gc_cycles_total.gc_cycles")
+			calls := mockCallsWithSuffix(mock.gaugeCall, ".gc_cycles_total.gc_cycles")
 			require.Equal(t, 2, len(calls))
 			require.Greater(t, calls[1].value, calls[0].value)
 		})
@@ -108,11 +108,11 @@ func TestMetricKinds(t *testing.T) {
 
 			// With Go 1.22: mutex wait sometimes increments when calling runtime.GC().
 			// This does not seem to happen with Go <= 1.21
-			beforeCalls := mockCallsWithSuffix(t, mock.gaugeCall, ".sync_mutex_wait_total.seconds")
+			beforeCalls := mockCallsWithSuffix(mock.gaugeCall, ".sync_mutex_wait_total.seconds")
 			require.LessOrEqual(t, len(beforeCalls), 1)
 			createLockContention(100 * time.Millisecond)
 			rms.report()
-			afterCalls := mockCallsWithSuffix(t, mock.gaugeCall, ".sync_mutex_wait_total.seconds")
+			afterCalls := mockCallsWithSuffix(mock.gaugeCall, ".sync_mutex_wait_total.seconds")
 			require.Equal(t, len(beforeCalls)+1, len(afterCalls))
 			require.Greater(t, afterCalls[0].value, 0.0)
 		})
