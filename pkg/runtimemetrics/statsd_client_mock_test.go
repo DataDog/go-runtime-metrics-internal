@@ -76,8 +76,7 @@ func mockCallsWith[T int64 | float64 | []float64](calls []statsdCall[T], filter 
 	return results
 }
 
-func mockCallsWithSuffix[T int64 | float64 | []float64](t *testing.T, calls []statsdCall[T], suffix string) []statsdCall[T] {
-	t.Helper()
+func mockCallsWithSuffix[T int64 | float64 | []float64](calls []statsdCall[T], suffix string) []statsdCall[T] {
 	return mockCallsWith(calls, func(c statsdCall[T]) bool {
 		return strings.HasSuffix(c.name, suffix)
 	})
@@ -85,7 +84,7 @@ func mockCallsWithSuffix[T int64 | float64 | []float64](t *testing.T, calls []st
 
 func mockCallWithSuffix[T int64 | float64 | []float64](t *testing.T, calls []statsdCall[T], suffix string) statsdCall[T] {
 	t.Helper()
-	candidates := mockCallsWithSuffix(t, calls, suffix)
+	candidates := mockCallsWithSuffix(calls, suffix)
 	if len(candidates) != 1 {
 		t.Fatalf("expected 1 call with suffix %s, got %d", suffix, len(candidates))
 	}
