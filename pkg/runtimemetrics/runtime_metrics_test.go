@@ -72,24 +72,21 @@ func TestMetricKinds(t *testing.T) {
 			old := debug.SetGCPercent(123)
 			defer debug.SetGCPercent(old)
 			mock, _ := reportMetric("/gc/gogc:percent", metrics.KindUint64)
-			require.Equal(t, 1, len(mock.gaugeCall))
-			require.Equal(t, 123.0, mock.gaugeCall[0].value)
-			require.True(t, strings.HasSuffix(mock.gaugeCall[0].name, ".gc_gogc.percent"))
+			require.Equal(t, 123.0, mockCallWithSuffix(t, mock.gaugeCall, ".gc_gogc.percent").value)
 		})
 
 		t.Run("Cumulative", func(t *testing.T) {
 			// Note: This test could fail if an unexpected GC occurs. This
 			// should be extremely unlikely.
 			mock, rms := reportMetric("/gc/cycles/total:gc-cycles", metrics.KindUint64)
-			require.Equal(t, 1, len(mock.gaugeCall))
-			require.GreaterOrEqual(t, mock.gaugeCall[0].value, 1.0)
-			require.True(t, strings.HasSuffix(mock.gaugeCall[0].name, ".gc_cycles_total.gc_cycles"), mock.gaugeCall[0].name)
+			require.GreaterOrEqual(t, mockCallWithSuffix(t, mock.gaugeCall, ".gc_cycles_total.gc_cycles").value, 1.0)
 			// Note: Only these two GC cycles are expected to occur here
 			runtime.GC()
 			runtime.GC()
 			rms.report()
-			require.Equal(t, 2, len(mock.gaugeCall))
-			require.Greater(t, mock.gaugeCall[1].value, mock.gaugeCall[0].value)
+			calls := mockCallsWithSuffix(t, mock.gaugeCall, ".gc_cycles_total.gc_cycles")
+			require.Equal(t, 2, len(calls))
+			require.Greater(t, calls[1].value, calls[0].value)
 		})
 	})
 
@@ -111,13 +108,13 @@ func TestMetricKinds(t *testing.T) {
 
 			// With Go 1.22: mutex wait sometimes increments when calling runtime.GC().
 			// This does not seem to happen with Go <= 1.21
-			beforeCallCount := len(mock.gaugeCall)
-			require.LessOrEqual(t, beforeCallCount, 1)
+			beforeCalls := mockCallsWithSuffix(t, mock.gaugeCall, ".sync_mutex_wait_total.seconds")
+			require.LessOrEqual(t, len(beforeCalls), 1)
 			createLockContention(100 * time.Millisecond)
 			rms.report()
-			require.Equal(t, beforeCallCount+1, len(mock.gaugeCall))
-			require.Greater(t, mock.gaugeCall[beforeCallCount].value, 0.0)
-			require.True(t, strings.HasSuffix(mock.gaugeCall[0].name, ".sync_mutex_wait_total.seconds"), mock.gaugeCall[0].name)
+			afterCalls := mockCallsWithSuffix(t, mock.gaugeCall, ".sync_mutex_wait_total.seconds")
+			require.Equal(t, len(beforeCalls)+1, len(afterCalls))
+			require.Greater(t, afterCalls[0].value, 0.0)
 		})
 	})
 
@@ -138,7 +135,10 @@ func TestMetricKinds(t *testing.T) {
 			// Note: This test could fail if an unexpected GC occurs. This
 			// should be extremely unlikely.
 			mock, rms := reportMetric("/gc/pauses:seconds", metrics.KindFloat64Histogram)
-			require.Equal(t, len(summaries), len(mock.gaugeCall))
+			calls1 := mockCallsWith(mock.gaugeCall, func(c statsdCall[float64]) bool {
+				return strings.Contains(c.name, ".gc_pauses.seconds.")
+			})
+			require.Equal(t, len(summaries), len(calls1))
 			for _, summary := range summaries {
 				want := ".gc_pauses.seconds." + summary
 				found := false
@@ -165,11 +165,17 @@ func TestMetricKinds(t *testing.T) {
 			}
 			rms.report()
 			// Note: No GC cycle is expected to occur here
-			require.Equal(t, len(summaries), len(mock.gaugeCall))
+			calls2 := mockCallsWith(mock.gaugeCall, func(c statsdCall[float64]) bool {
+				return strings.Contains(c.name, ".gc_pauses.seconds.")
+			})
+			require.Equal(t, len(summaries), len(calls2))
 			// Note: Only this GC cycle is expected to occur here
 			runtime.GC()
 			rms.report()
-			require.Equal(t, len(summaries)*2, len(mock.gaugeCall))
+			calls3 := mockCallsWith(mock.gaugeCall, func(c statsdCall[float64]) bool {
+				return strings.Contains(c.name, ".gc_pauses.seconds.")
+			})
+			require.Equal(t, len(summaries)*2, len(calls3))
 		})
 	})
 }

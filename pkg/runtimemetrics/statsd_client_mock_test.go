@@ -1,6 +1,10 @@
 package runtimemetrics
 
-import "time"
+import (
+	"strings"
+	"testing"
+	"time"
+)
 
 // statsdClientMock is a hand-rolled mock for partialStatsdClientInterface. Not
 // using any mocking library to reduce dependencies for a future move into
@@ -60,4 +64,30 @@ type statsdCall[T int64 | float64 | []float64] struct {
 	value T
 	tags  []string
 	rate  float64
+}
+
+func mockCallsWith[T int64 | float64 | []float64](calls []statsdCall[T], filter func(statsdCall[T]) bool) []statsdCall[T] {
+	var results []statsdCall[T]
+	for _, c := range calls {
+		if filter(c) {
+			results = append(results, c)
+		}
+	}
+	return results
+}
+
+func mockCallsWithSuffix[T int64 | float64 | []float64](t *testing.T, calls []statsdCall[T], suffix string) []statsdCall[T] {
+	t.Helper()
+	return mockCallsWith(calls, func(c statsdCall[T]) bool {
+		return strings.HasSuffix(c.name, suffix)
+	})
+}
+
+func mockCallWithSuffix[T int64 | float64 | []float64](t *testing.T, calls []statsdCall[T], suffix string) statsdCall[T] {
+	t.Helper()
+	candidates := mockCallsWithSuffix(t, calls, suffix)
+	if len(candidates) != 1 {
+		t.Fatalf("expected 1 call with suffix %s, got %d", suffix, len(candidates))
+	}
+	return candidates[0]
 }
