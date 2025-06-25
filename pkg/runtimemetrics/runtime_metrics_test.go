@@ -15,33 +15,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestStart(t *testing.T) {
-	cleanup := func() {
-		mu.Lock()
-		enabled = false
-		mu.Unlock()
-	}
+func TestEmitter(t *testing.T) {
+	// TODO: Use testing/synctest in go1.25 for this in the future.
+	t.Run("should emit metrics", func(t *testing.T) {
+		// Start the emitter and wait until some metrics are submitted.
+		statsd := &statsdClientMock{}
+		emitter := NewEmitter(statsd, &Options{Logger: slog.Default(), Period: 1 * time.Millisecond})
+		require.NotNil(t, emitter)
+		require.Eventually(t, func() bool { return len(statsd.gaugeCall) > 0 }, time.Second, 1*time.Millisecond)
+		calls := statsd.gaugeCall
 
-	t.Run("start returns an error when called successively", func(t *testing.T) {
-		t.Cleanup(cleanup)
-		err := Start(&statsdClientMock{}, slog.Default())
-		assert.NoError(t, err)
+		// After Stop, no more metrics should be submitted.
+		emitter.Stop()
+		time.Sleep(10 * time.Millisecond)
+		require.Equal(t, len(calls), len(statsd.gaugeCall))
 
-		err = Start(&statsdClientMock{}, slog.Default())
-		assert.Error(t, err)
+		// Stop should be idempotent.
+		emitter.Stop()
 	})
 
-	t.Run("should not race with other start calls", func(t *testing.T) {
-		t.Cleanup(cleanup)
-		wg := sync.WaitGroup{}
-		for i := 0; i < 10; i++ {
-			wg.Add(1)
-			go func() {
-				Start(&statsdClientMock{}, slog.Default())
-				wg.Done()
-			}()
-		}
-		wg.Wait()
+	t.Run("should not panic on nil options", func(t *testing.T) {
+		emitter := NewEmitter(&statsdClientMock{}, nil)
+		require.NotNil(t, emitter)
+		emitter.Stop()
 	})
 }
 
@@ -187,7 +183,7 @@ func TestSmoke(t *testing.T) {
 	// Initialize store for all metrics with a mocked statsd client.
 	descs := metrics.All()
 	mock := &statsdClientMock{}
-	rms := newRuntimeMetricStore(descs, mock, slog.Default())
+	rms := newRuntimeMetricStore(descs, mock, slog.Default(), []string{})
 
 	// This poulates most runtime/metrics.
 	runtime.GC()
@@ -215,7 +211,7 @@ func BenchmarkReport(b *testing.B) {
 	// Initialize store for all metrics with a mocked statsd client.
 	descs := metrics.All()
 	mock := &statsdClientMock{Discard: true}
-	rms := newRuntimeMetricStore(descs, mock, slog.Default())
+	rms := newRuntimeMetricStore(descs, mock, slog.Default(), []string{})
 
 	// Benchmark report method
 	b.ReportAllocs()
@@ -232,7 +228,7 @@ func BenchmarkReport(b *testing.B) {
 func reportMetric(name string, kind metrics.ValueKind) (*statsdClientMock, runtimeMetricStore) {
 	desc := metricDesc(name, kind)
 	mock := &statsdClientMock{}
-	rms := newRuntimeMetricStore([]metrics.Description{desc}, mock, slog.Default())
+	rms := newRuntimeMetricStore([]metrics.Description{desc}, mock, slog.Default(), []string{})
 	// Populate Metrics. Test implicitly expect this to be the only GC cycle to happen before report is finished.
 	runtime.GC()
 	rms.report()

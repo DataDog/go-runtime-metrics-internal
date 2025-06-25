@@ -57,8 +57,7 @@ func TestGetBaseTags(t *testing.T) {
 			old := debug.SetGCPercent(tt.gogc)
 			defer debug.SetGCPercent(old)
 
-			tags := getBaseTags()
-			assertTagValue(t, "gogc", tt.expected, tags)
+			assertTagValue(t, "gogc", tt.expected, getBaseTags())
 		})
 	}
 
@@ -89,8 +88,7 @@ func TestGetBaseTags(t *testing.T) {
 			old := debug.SetMemoryLimit(tt.gomemlimit)
 			defer debug.SetMemoryLimit(old)
 
-			tags := getBaseTags()
-			assertTagValue(t, "gomemlimit", tt.expected, tags)
+			assertTagValue(t, "gomemlimit", tt.expected, getBaseTags())
 		})
 	}
 
@@ -98,13 +96,11 @@ func TestGetBaseTags(t *testing.T) {
 		old := runtime.GOMAXPROCS(42)
 		defer runtime.GOMAXPROCS(old)
 
-		tags := getBaseTags()
-		assertTagValue(t, "gomaxprocs", "42", tags)
+		assertTagValue(t, "gomaxprocs", "42", getBaseTags())
 	})
 
 	t.Run("should return the correct goversion", func(t *testing.T) {
-		tags := getBaseTags()
-		assertTagValue(t, "goversion", runtime.Version(), tags)
+		assertTagValue(t, "goversion", runtime.Version(), getBaseTags())
 	})
 }
 

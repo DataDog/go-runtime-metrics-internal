@@ -2,7 +2,7 @@
 package runtimemetrics
 
 import (
-	"errors"
+	"cmp"
 	"fmt"
 	"log/slog"
 	"math"
@@ -13,48 +13,63 @@ import (
 	"time"
 )
 
-// pollFrequency is the frequency at which we poll runtime/metrics and report
-// them to statsd. The statsd client aggregates this data, usually over a 2s
-// window [1], and so does the agent, usually over a 10s window [2].
-//
-// Our goal is to submit one data point per aggregation window, using the
-// CountWithTimestamp / GaugeWithTimestamp APIs for submitting precisely aligned
-// metrics, to enable comparing them with one another.
-//
-// [1] https://github.com/DataDog/datadog-go/blob/e612112c8bb396b33ad5d9edd645d289b07d0e40/statsd/options.go/#L23
-// [2] https://docs.datadoghq.com/developers/dogstatsd/data_aggregation/#how-is-aggregation-performed-with-the-dogstatsd-server
-var pollFrequency = 10 * time.Second
+// Options are the options for the runtime metrics emitter.
+type Options struct {
+	// Logger is used to log errors. Defaults to slog.Default() if nil.
+	Logger *slog.Logger
+	// Tags are added to all metrics.
+	Tags []string
+	// Period is the period at which we poll runtime/metrics and report
+	// them to statsd. Defaults to 10s.
+	//
+	// The statsd client aggregates this data, usually over a 2s window [1], and
+	// so does the agent, usually over a 10s window [2].
+	//
+	// We submit one data point per aggregation window, using the
+	// CountWithTimestamp / GaugeWithTimestamp APIs for submitting precisely
+	// aligned metrics, to enable comparing them with one another.
+	//
+	// [1] https://github.com/DataDog/datadog-go/blob/e612112c8bb396b33ad5d9edd645d289b07d0e40/statsd/options.go/#L23
+	// [2] https://docs.datadoghq.com/developers/dogstatsd/data_aggregation/#how-is-aggregation-performed-with-the-dogstatsd-server
+	Period time.Duration
+}
 
-var unknownMetricLogOnce, unsupportedKindLogOnce sync.Once
-
-// mu protects the variables below
-var mu sync.Mutex
-var enabled bool
-
-// NOTE: The Start method below is intentionally minimal for now. We probably want to think about
-// this API a bit more before we publish it in dd-trace-go. I.e. do we want to make the
-// pollFrequency configurable (higher resolution at the cost of higher overhead on the agent and
-// statsd library)? Do we want to support multiple instances? We probably also want a (flushing?)
-// stop method.
-
-// Start starts reporting runtime/metrics to the given statsd client.
-func Start(statsd partialStatsdClientInterface, logger *slog.Logger) error {
-	mu.Lock()
-	defer mu.Unlock()
-
-	if enabled {
-		// We could support multiple instances, but the use cases for it are not
-		// clear, so for now let's consider this to be a misconfiguration.
-		return errors.New("runtimemetrics has already been started")
+// NewEmitter creates a new runtime metrics emitter and starts it.
+func NewEmitter(statsd partialStatsdClientInterface, opts *Options) *Emitter {
+	if opts == nil {
+		opts = &Options{}
 	}
+	e := &Emitter{
+		statsd: statsd,
+		logger: cmp.Or(opts.Logger, slog.Default()),
+		tags:   opts.Tags,
+		stop:   make(chan struct{}),
+		period: cmp.Or(opts.Period, 10*time.Second),
+	}
+	go e.emit()
+	return e
+}
 
+// Emitter submits runtime/metrics to statsd on a regular interval.
+type Emitter struct {
+	statsd partialStatsdClientInterface
+	logger *slog.Logger
+	tags   []string
+	period time.Duration
+
+	stop chan struct{}
+}
+
+// emit emits runtime/metrics to statsd on a regular interval.
+func (e *Emitter) emit() {
 	descs := metrics.All()
-	rms := newRuntimeMetricStore(descs, statsd, logger)
+	tags := append(getBaseTags(), e.tags...)
+	rms := newRuntimeMetricStore(descs, e.statsd, e.logger, tags)
 	// TODO: Go services experiencing high scheduling latency might see a
 	// large variance for the period in between rms.report calls. This might
 	// cause spikes in cumulative metric reporting. Should we try to correct
-	// for this by measuring the actual reporting time delta and
-	// extrapolating our numbers?
+	// for this by measuring the actual reporting time delta to adjust
+	// the numbers?
 	//
 	// Another challenge is that some metrics only update after GC mark
 	// termination, see [1][2]. This means that it's likely that the rate of
@@ -63,20 +78,25 @@ func Start(statsd partialStatsdClientInterface, logger *slog.Logger) error {
 	//
 	// [1] https://github.com/golang/go/blob/go1.21.3/src/runtime/mstats.go#L939
 	// [2] https://github.com/golang/go/issues/59749
-	go func() {
-		for range time.Tick(pollFrequency) {
+	tick := time.Tick(e.period)
+	for {
+		select {
+		case <-e.stop:
+			return
+		case <-tick:
 			rms.report()
 		}
-	}()
-	enabled = true
-	return nil
+	}
 }
 
-func SetBaseTags(tags []string) {
-	muTags.Lock()
-	defer muTags.Unlock()
-
-	rootBaseTags = tags
+// Stop stops the emitter. It is idempotent.
+func (e *Emitter) Stop() {
+	select {
+	case <-e.stop:
+		return
+	default:
+		close(e.stop)
+	}
 }
 
 type runtimeMetric struct {
@@ -89,10 +109,12 @@ type runtimeMetric struct {
 
 // the map key is the name of the metric in runtime/metrics
 type runtimeMetricStore struct {
-	metrics  map[string]*runtimeMetric
-	statsd   partialStatsdClientInterface
-	logger   *slog.Logger
-	baseTags []string
+	metrics                map[string]*runtimeMetric
+	statsd                 partialStatsdClientInterface
+	logger                 *slog.Logger
+	baseTags               []string
+	unknownMetricLogOnce   *sync.Once
+	unsupportedKindLogOnce *sync.Once
 }
 
 // partialStatsdClientInterface is the subset of statsd.ClientInterface that is
@@ -106,12 +128,14 @@ type partialStatsdClientInterface interface {
 	DistributionSamples(name string, values []float64, tags []string, rate float64) error
 }
 
-func newRuntimeMetricStore(descs []metrics.Description, statsdClient partialStatsdClientInterface, logger *slog.Logger) runtimeMetricStore {
+func newRuntimeMetricStore(descs []metrics.Description, statsdClient partialStatsdClientInterface, logger *slog.Logger, tags []string) runtimeMetricStore {
 	rms := runtimeMetricStore{
-		metrics:  map[string]*runtimeMetric{},
-		statsd:   statsdClient,
-		logger:   logger,
-		baseTags: getBaseTags(),
+		metrics:                map[string]*runtimeMetric{},
+		statsd:                 statsdClient,
+		logger:                 logger,
+		baseTags:               tags,
+		unknownMetricLogOnce:   &sync.Once{},
+		unsupportedKindLogOnce: &sync.Once{},
 	}
 
 	for _, d := range descs {
@@ -269,7 +293,7 @@ func (rms runtimeMetricStore) report() {
 		case metrics.KindBad:
 			// This should never happen because all metrics are supported
 			// by construction.
-			unknownMetricLogOnce.Do(func() {
+			rms.unknownMetricLogOnce.Do(func() {
 				rms.logger.Error("runtimemetrics: encountered an unknown metric, this should never happen and might indicate a bug", slog.Attr{Key: "metric_name", Value: slog.StringValue(name)})
 			})
 		default:
@@ -277,7 +301,7 @@ func (rms runtimeMetricStore) report() {
 			//
 			// The safest thing to do here is to simply log it somewhere once
 			// as something to look into, but ignore it for now.
-			unsupportedKindLogOnce.Do(func() {
+			rms.unsupportedKindLogOnce.Do(func() {
 				rms.logger.Error("runtimemetrics: unsupported metric kind, support for that kind should be added in pkg/runtimemetrics",
 					slog.Attr{Key: "metric_name", Value: slog.StringValue(name)},
 					slog.Attr{Key: "kind", Value: slog.AnyValue(rm.currentValue.Kind())},
