@@ -22,16 +22,14 @@ func TestEmitter(t *testing.T) {
 		statsd := &statsdClientMock{}
 		emitter := NewEmitter(statsd, &Options{Logger: slog.Default(), Period: 1 * time.Millisecond})
 		require.NotNil(t, emitter)
-		require.Eventually(t, func() bool { 
-			return len(statsd.GaugeCalls()) > 0 
+		require.Eventually(t, func() bool {
+			return len(statsd.GaugeCalls()) > 0
 		}, time.Second, 1*time.Millisecond)
-		
-		calls := statsd.GaugeCalls()
 
 		// After Stop, no more metrics should be submitted.
 		emitter.Stop()
+		calls := statsd.GaugeCalls()
 		time.Sleep(10 * time.Millisecond)
-		
 		finalCalls := statsd.GaugeCalls()
 		require.Equal(t, len(calls), len(finalCalls))
 
