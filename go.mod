@@ -1,8 +1,6 @@
 module github.com/DataDog/go-runtime-metrics-internal
 
-go 1.21
-
-toolchain go1.22.3
+go 1.23
 
 require github.com/stretchr/testify v1.9.0
 
