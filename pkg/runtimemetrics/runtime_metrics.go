@@ -40,11 +40,12 @@ func NewEmitter(statsd partialStatsdClientInterface, opts *Options) *Emitter {
 		opts = &Options{}
 	}
 	e := &Emitter{
-		statsd: statsd,
-		logger: cmp.Or(opts.Logger, slog.Default()),
-		tags:   opts.Tags,
-		stop:   make(chan struct{}),
-		period: cmp.Or(opts.Period, 10*time.Second),
+		statsd:  statsd,
+		logger:  cmp.Or(opts.Logger, slog.Default()),
+		tags:    opts.Tags,
+		stop:    make(chan struct{}),
+		stopped: make(chan struct{}),
+		period:  cmp.Or(opts.Period, 10*time.Second),
 	}
 	go e.emit()
 	return e
@@ -57,7 +58,8 @@ type Emitter struct {
 	tags   []string
 	period time.Duration
 
-	stop chan struct{}
+	stop    chan struct{}
+	stopped chan struct{}
 }
 
 // emit emits runtime/metrics to statsd on a regular interval.
@@ -82,6 +84,7 @@ func (e *Emitter) emit() {
 	for {
 		select {
 		case <-e.stop:
+			close(e.stopped)
 			return
 		case <-tick:
 			rms.report()
@@ -93,9 +96,11 @@ func (e *Emitter) emit() {
 func (e *Emitter) Stop() {
 	select {
 	case <-e.stop:
+		<-e.stopped
 		return
 	default:
 		close(e.stop)
+		<-e.stopped
 	}
 }
 

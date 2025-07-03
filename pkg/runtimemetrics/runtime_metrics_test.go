@@ -22,13 +22,16 @@ func TestEmitter(t *testing.T) {
 		statsd := &statsdClientMock{}
 		emitter := NewEmitter(statsd, &Options{Logger: slog.Default(), Period: 1 * time.Millisecond})
 		require.NotNil(t, emitter)
-		require.Eventually(t, func() bool { return len(statsd.gaugeCall) > 0 }, time.Second, 1*time.Millisecond)
-		calls := statsd.gaugeCall
+		require.Eventually(t, func() bool {
+			return len(statsd.GaugeCalls()) > 0
+		}, time.Second, 1*time.Millisecond)
 
 		// After Stop, no more metrics should be submitted.
 		emitter.Stop()
+		calls := statsd.GaugeCalls()
 		time.Sleep(10 * time.Millisecond)
-		require.Equal(t, len(calls), len(statsd.gaugeCall))
+		finalCalls := statsd.GaugeCalls()
+		require.Equal(t, len(calls), len(finalCalls))
 
 		// Stop should be idempotent.
 		emitter.Stop()
@@ -68,19 +71,19 @@ func TestMetricKinds(t *testing.T) {
 			old := debug.SetGCPercent(123)
 			defer debug.SetGCPercent(old)
 			mock, _ := reportMetric("/gc/gogc:percent", metrics.KindUint64)
-			require.Equal(t, 123.0, mockCallWithSuffix(t, mock.gaugeCall, ".gc_gogc.percent").value)
+			require.Equal(t, 123.0, mockCallWithSuffix(t, mock.GaugeCalls(), ".gc_gogc.percent").value)
 		})
 
 		t.Run("Cumulative", func(t *testing.T) {
 			// Note: This test could fail if an unexpected GC occurs. This
 			// should be extremely unlikely.
 			mock, rms := reportMetric("/gc/cycles/total:gc-cycles", metrics.KindUint64)
-			require.GreaterOrEqual(t, mockCallWithSuffix(t, mock.gaugeCall, ".gc_cycles_total.gc_cycles").value, 1.0)
+			require.GreaterOrEqual(t, mockCallWithSuffix(t, mock.GaugeCalls(), ".gc_cycles_total.gc_cycles").value, 1.0)
 			// Note: Only these two GC cycles are expected to occur here
 			runtime.GC()
 			runtime.GC()
 			rms.report()
-			calls := mockCallsWithSuffix(mock.gaugeCall, ".gc_cycles_total.gc_cycles")
+			calls := mockCallsWithSuffix(mock.GaugeCalls(), ".gc_cycles_total.gc_cycles")
 			require.Equal(t, 2, len(calls))
 			require.Greater(t, calls[1].value, calls[0].value)
 		})
@@ -104,13 +107,13 @@ func TestMetricKinds(t *testing.T) {
 
 			// With Go 1.22: mutex wait sometimes increments when calling runtime.GC().
 			// This does not seem to happen with Go <= 1.21
-			beforeCalls := mockCallsWithSuffix(mock.gaugeCall, ".sync_mutex_wait_total.seconds")
+			beforeCalls := mockCallsWithSuffix(mock.GaugeCalls(), ".sync_mutex_wait_total.seconds")
 			require.LessOrEqual(t, len(beforeCalls), 1)
 			createLockContention(100 * time.Millisecond)
 			rms.report()
-			afterCalls := mockCallsWithSuffix(mock.gaugeCall, ".sync_mutex_wait_total.seconds")
+			afterCalls := mockCallsWithSuffix(mock.GaugeCalls(), ".sync_mutex_wait_total.seconds")
 			require.Equal(t, len(beforeCalls)+1, len(afterCalls))
-			require.Greater(t, afterCalls[0].value, 0.0)
+			require.Greater(t, afterCalls[len(afterCalls)-1].value, 0.0)
 		})
 	})
 
@@ -131,14 +134,14 @@ func TestMetricKinds(t *testing.T) {
 			// Note: This test could fail if an unexpected GC occurs. This
 			// should be extremely unlikely.
 			mock, rms := reportMetric("/gc/pauses:seconds", metrics.KindFloat64Histogram)
-			calls1 := mockCallsWith(mock.gaugeCall, func(c statsdCall[float64]) bool {
+			calls1 := mockCallsWith(mock.GaugeCalls(), func(c statsdCall[float64]) bool {
 				return strings.Contains(c.name, ".gc_pauses.seconds.")
 			})
 			require.Equal(t, len(summaries), len(calls1))
 			for _, summary := range summaries {
 				want := ".gc_pauses.seconds." + summary
 				found := false
-				for _, call := range mock.gaugeCall {
+				for _, call := range mock.GaugeCalls() {
 					if strings.HasSuffix(call.name, want) {
 						found = true
 						break
@@ -150,7 +153,7 @@ func TestMetricKinds(t *testing.T) {
 			}
 			found := false
 			want := ".gc_pauses.seconds"
-			for _, call := range mock.distributionSampleCall {
+			for _, call := range mock.DistributionSampleCalls() {
 				if strings.HasSuffix(call.name, want) {
 					found = true
 					break
@@ -161,14 +164,14 @@ func TestMetricKinds(t *testing.T) {
 			}
 			rms.report()
 			// Note: No GC cycle is expected to occur here
-			calls2 := mockCallsWith(mock.gaugeCall, func(c statsdCall[float64]) bool {
+			calls2 := mockCallsWith(mock.GaugeCalls(), func(c statsdCall[float64]) bool {
 				return strings.Contains(c.name, ".gc_pauses.seconds.")
 			})
 			require.Equal(t, len(summaries), len(calls2))
 			// Note: Only this GC cycle is expected to occur here
 			runtime.GC()
 			rms.report()
-			calls3 := mockCallsWith(mock.gaugeCall, func(c statsdCall[float64]) bool {
+			calls3 := mockCallsWith(mock.GaugeCalls(), func(c statsdCall[float64]) bool {
 				return strings.Contains(c.name, ".gc_pauses.seconds.")
 			})
 			require.Equal(t, len(summaries)*2, len(calls3))
@@ -189,7 +192,7 @@ func TestSmoke(t *testing.T) {
 	runtime.GC()
 
 	// But nothing should be sent to statsd yet.
-	assert.Equal(t, 0, len(mock.gaugeCall))
+	assert.Equal(t, 0, len(mock.GaugeCalls()))
 
 	// Flush the current metrics to our statsd mock.
 	rms.report()
@@ -199,9 +202,9 @@ func TestSmoke(t *testing.T) {
 	// get roughly the expected number of statsd calls (+/- 50%). This is meant
 	// to catch severe regression. Might need to be updated in the future if
 	// lots of new metrics are added.
-	assert.InDelta(t, 87, len(mock.gaugeCall), 87/2) // typically 87
+	assert.InDelta(t, 87, len(mock.GaugeCalls()), 87/2) // typically 87
 
-	assert.Positive(t, len(mock.distributionSampleCall))
+	assert.Positive(t, len(mock.DistributionSampleCalls()))
 }
 
 // BenchmarkReport is used to determine the overhead of collecting all metrics
