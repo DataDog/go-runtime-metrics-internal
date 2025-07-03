@@ -2,6 +2,7 @@ package runtimemetrics
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -13,6 +14,7 @@ type statsdClientMock struct {
 	// Discard causes all calls to be discarded rather than tracked.
 	Discard bool
 
+	mu                     sync.RWMutex
 	gaugeCall              []statsdCall[float64]
 	countCall              []statsdCall[int64]
 	distributionSampleCall []statsdCall[[]float64]
@@ -23,6 +25,8 @@ func (s *statsdClientMock) GaugeWithTimestamp(name string, value float64, tags [
 	if s.Discard {
 		return nil
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.gaugeCall = append(s.gaugeCall, statsdCall[float64]{
 		name:  name,
 		value: value,
@@ -37,6 +41,8 @@ func (s *statsdClientMock) CountWithTimestamp(name string, value int64, tags []s
 	if s.Discard {
 		return nil
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.countCall = append(s.countCall, statsdCall[int64]{
 		name:  name,
 		value: value,
@@ -50,6 +56,8 @@ func (s *statsdClientMock) DistributionSamples(name string, values []float64, ta
 	if s.Discard {
 		return nil
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.distributionSampleCall = append(s.distributionSampleCall, statsdCall[[]float64]{
 		name:  name,
 		value: values,
@@ -57,6 +65,31 @@ func (s *statsdClientMock) DistributionSamples(name string, values []float64, ta
 		rate:  rate,
 	})
 	return nil
+}
+
+// Thread-safe accessors for the call slices
+func (s *statsdClientMock) GaugeCalls() []statsdCall[float64] {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	calls := make([]statsdCall[float64], len(s.gaugeCall))
+	copy(calls, s.gaugeCall)
+	return calls
+}
+
+func (s *statsdClientMock) CountCalls() []statsdCall[int64] {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	calls := make([]statsdCall[int64], len(s.countCall))
+	copy(calls, s.countCall)
+	return calls
+}
+
+func (s *statsdClientMock) DistributionSampleCalls() []statsdCall[[]float64] {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	calls := make([]statsdCall[[]float64], len(s.distributionSampleCall))
+	copy(calls, s.distributionSampleCall)
+	return calls
 }
 
 type statsdCall[T int64 | float64 | []float64] struct {
