@@ -110,7 +110,7 @@ func TestMetricKinds(t *testing.T) {
 			rms.report()
 			afterCalls := mockCallsWithSuffix(mock.gaugeCall, ".sync_mutex_wait_total.seconds")
 			require.Equal(t, len(beforeCalls)+1, len(afterCalls))
-			require.Greater(t, afterCalls[0].value, 0.0)
+			require.Greater(t, afterCalls[len(afterCalls)-1].value, 0.0)
 		})
 	})
 
