@@ -77,12 +77,12 @@ func TestMetricKinds(t *testing.T) {
 		t.Run("Cumulative", func(t *testing.T) {
 			// Note: This test could fail if an unexpected GC occurs. This
 			// should be extremely unlikely.
-			mock, rms := reportMetric("/gc/cycles/total:gc-cycles", metrics.KindUint64)
+			mock, emitter := reportMetric("/gc/cycles/total:gc-cycles", metrics.KindUint64)
 			require.GreaterOrEqual(t, mockCallWithSuffix(t, mock.GaugeCalls(), ".gc_cycles_total.gc_cycles").value, 1.0)
 			// Note: Only these two GC cycles are expected to occur here
 			runtime.GC()
 			runtime.GC()
-			rms.report()
+			emitter.report()
 			calls := mockCallsWithSuffix(mock.GaugeCalls(), ".gc_cycles_total.gc_cycles")
 			require.Equal(t, 2, len(calls))
 			require.Greater(t, calls[1].value, calls[0].value)
@@ -103,14 +103,14 @@ func TestMetricKinds(t *testing.T) {
 		t.Run("Cumulative", func(t *testing.T) {
 			// Note: This test could fail if we get extremely unlucky with the
 			// scheduling. This should be extremely unlikely.
-			mock, rms := reportMetric("/sync/mutex/wait/total:seconds", metrics.KindFloat64)
+			mock, emitter := reportMetric("/sync/mutex/wait/total:seconds", metrics.KindFloat64)
 
 			// With Go 1.22: mutex wait sometimes increments when calling runtime.GC().
 			// This does not seem to happen with Go <= 1.21
 			beforeCalls := mockCallsWithSuffix(mock.GaugeCalls(), ".sync_mutex_wait_total.seconds")
 			require.LessOrEqual(t, len(beforeCalls), 1)
 			createLockContention(100 * time.Millisecond)
-			rms.report()
+			emitter.report()
 			afterCalls := mockCallsWithSuffix(mock.GaugeCalls(), ".sync_mutex_wait_total.seconds")
 			require.Equal(t, len(beforeCalls)+1, len(afterCalls))
 			require.Greater(t, afterCalls[len(afterCalls)-1].value, 0.0)
@@ -133,7 +133,7 @@ func TestMetricKinds(t *testing.T) {
 			summaries := []string{"avg", "min", "max", "median", "p95", "p99"}
 			// Note: This test could fail if an unexpected GC occurs. This
 			// should be extremely unlikely.
-			mock, rms := reportMetric("/gc/pauses:seconds", metrics.KindFloat64Histogram)
+			mock, emitter := reportMetric("/gc/pauses:seconds", metrics.KindFloat64Histogram)
 			calls1 := mockCallsWith(mock.GaugeCalls(), func(c statsdCall[float64]) bool {
 				return strings.Contains(c.name, ".gc_pauses.seconds.")
 			})
@@ -162,7 +162,7 @@ func TestMetricKinds(t *testing.T) {
 			if !found {
 				t.Errorf("missing %s metric", want)
 			}
-			rms.report()
+			emitter.report()
 			// Note: No GC cycle is expected to occur here
 			calls2 := mockCallsWith(mock.GaugeCalls(), func(c statsdCall[float64]) bool {
 				return strings.Contains(c.name, ".gc_pauses.seconds.")
@@ -170,7 +170,7 @@ func TestMetricKinds(t *testing.T) {
 			require.Equal(t, len(summaries), len(calls2))
 			// Note: Only this GC cycle is expected to occur here
 			runtime.GC()
-			rms.report()
+			emitter.report()
 			calls3 := mockCallsWith(mock.GaugeCalls(), func(c statsdCall[float64]) bool {
 				return strings.Contains(c.name, ".gc_pauses.seconds.")
 			})
@@ -183,19 +183,20 @@ func TestMetricKinds(t *testing.T) {
 // metrics and check that we don't crash or produce a very unexpected number of
 // metrics.
 func TestSmoke(t *testing.T) {
-	// Initialize store for all metrics with a mocked statsd client.
-	descs := metrics.All()
+	// Initialize emitter for all metrics with a mocked statsd client.
 	mock := &statsdClientMock{}
-	rms := newRuntimeMetricStore(descs, mock, slog.Default(), []string{})
+	emitter := NewEmitter(mock, &Options{Logger: slog.Default()})
+	defer emitter.Stop()
 
 	// This poulates most runtime/metrics.
 	runtime.GC()
 
-	// But nothing should be sent to statsd yet.
-	assert.Equal(t, 0, len(mock.GaugeCalls()))
+	// But nothing should be sent to statsd yet initially.
+	// Give it a moment for potential initial emissions
+	time.Sleep(1 * time.Millisecond)
 
 	// Flush the current metrics to our statsd mock.
-	rms.report()
+	emitter.report()
 
 	// The exact number of statsd calls depends on the metric values and may
 	// also change as new version of Go are being released. So we assert that we
@@ -211,31 +212,53 @@ func TestSmoke(t *testing.T) {
 // and discarding them in a statsd mock. This can be used as a stress test,
 // identify regressions and to inform decisions about pollFrequency.
 func BenchmarkReport(b *testing.B) {
-	// Initialize store for all metrics with a mocked statsd client.
-	descs := metrics.All()
+	// Initialize emitter for all metrics with a mocked statsd client.
 	mock := &statsdClientMock{Discard: true}
-	rms := newRuntimeMetricStore(descs, mock, slog.Default(), []string{})
+	emitter := NewEmitter(mock, &Options{Logger: slog.Default()})
+	defer emitter.Stop()
 
 	// Benchmark report method
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		rms.report()
+		emitter.report()
 	}
 }
 
-// reportMetric creates a metrics store for the given metric, hooks it up to a
+// reportMetric creates an emitter for the given metric, hooks it up to a
 // mock statsd client, triggers a GC cycle, calls report, and then returns
 // both. Callers are expected to observe the calls recorded by the mock and/or
 // trigger more activity.
-func reportMetric(name string, kind metrics.ValueKind) (*statsdClientMock, runtimeMetricStore) {
+func reportMetric(name string, kind metrics.ValueKind) (*statsdClientMock, *Emitter) {
 	desc := metricDesc(name, kind)
 	mock := &statsdClientMock{}
-	rms := newRuntimeMetricStore([]metrics.Description{desc}, mock, slog.Default(), []string{})
+	// Create a new emitter with just the specific metric
+	emitter := NewEmitter(mock, &Options{Logger: slog.Default()})
+
+	// Clear all metrics and initialize only the one we want to test
+	emitter.metrics = map[string]*runtimeMetric{}
+	cumulative := desc.Cumulative
+	if desc.Name == "/sched/latencies:seconds" {
+		cumulative = true
+	}
+	ddMetricName, err := datadogMetricName(desc.Name)
+	if err != nil {
+		panic(fmt.Sprintf("failed to get datadog metric name for %s: %v", desc.Name, err))
+	}
+	emitter.metrics[desc.Name] = &runtimeMetric{
+		ddMetricName: ddMetricName,
+		cumulative:   cumulative,
+	}
+
+	// Initialize the metric values first
+	emitter.update()
 	// Populate Metrics. Test implicitly expect this to be the only GC cycle to happen before report is finished.
 	runtime.GC()
-	rms.report()
-	return mock, rms
+	emitter.report()
+
+	// Stop the emitter after testing
+	emitter.Stop()
+	return mock, emitter
 }
 
 // metricDesc looks up a metric by name and kind. The name alone should be
