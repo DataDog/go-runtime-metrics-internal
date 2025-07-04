@@ -368,3 +368,13 @@ func Start(statsd partialStatsdClientInterface, logger *slog.Logger) error {
 	_, err := NewEmitter(statsd, &Options{Logger: logger})
 	return err
 }
+
+// SetBaseTags sets the base tags that will be added to all metrics
+//
+// Deprecated: Use NewEmitter with Options.Tags instead.
+func SetBaseTags(tags []string) {
+	muTags.Lock()
+	defer muTags.Unlock()
+
+	rootBaseTags = tags
+}
