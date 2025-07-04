@@ -360,3 +360,11 @@ func datadogMetricName(runtimeName string) (string, error) {
 	// runtime/metrics squad.
 	return datadogMetricPrefix + name, nil
 }
+
+// Start starts reporting runtime/metrics to the given statsd client.
+//
+// Deprecated: Use NewEmitter instead.
+func Start(statsd partialStatsdClientInterface, logger *slog.Logger) error {
+	_, err := NewEmitter(statsd, &Options{Logger: logger})
+	return err
+}
