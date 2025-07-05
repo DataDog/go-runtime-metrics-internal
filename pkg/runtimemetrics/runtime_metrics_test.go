@@ -20,7 +20,8 @@ func TestEmitter(t *testing.T) {
 	t.Run("should emit metrics", func(t *testing.T) {
 		// Start the emitter and wait until some metrics are submitted.
 		statsd := &statsdClientMock{}
-		emitter := NewEmitter(statsd, &Options{Logger: slog.Default(), Period: 1 * time.Millisecond})
+		emitter, err := NewEmitter(statsd, &Options{Logger: slog.Default(), Period: 1 * time.Millisecond})
+		require.NoError(t, err)
 		require.NotNil(t, emitter)
 		require.Eventually(t, func() bool {
 			return len(statsd.GaugeCalls()) > 0
@@ -38,9 +39,44 @@ func TestEmitter(t *testing.T) {
 	})
 
 	t.Run("should not panic on nil options", func(t *testing.T) {
-		emitter := NewEmitter(&statsdClientMock{}, nil)
+		emitter, err := NewEmitter(&statsdClientMock{}, nil)
+		require.NoError(t, err)
 		require.NotNil(t, emitter)
 		emitter.Stop()
+	})
+
+	t.Run("should not allow starting multiple instances concurrently", func(t *testing.T) {
+		// Create first emitter - should work
+		emitter1, err := NewEmitter(&statsdClientMock{}, &Options{})
+		require.NoError(t, err)
+		defer emitter1.Stop()
+		// Create second emitter - should fail
+		emitter2, err := NewEmitter(&statsdClientMock{}, &Options{})
+		require.Error(t, err)
+		require.Nil(t, emitter2)
+	})
+
+	t.Run("should allow starting multiple instances with AllowMultipleInstances", func(t *testing.T) {
+		// Create first emitter - should work
+		emitter1, err := NewEmitter(&statsdClientMock{}, &Options{AllowMultipleInstances: true})
+		require.NoError(t, err)
+		defer emitter1.Stop()
+		// Create second emitter - should work
+		emitter2, err := NewEmitter(&statsdClientMock{}, &Options{AllowMultipleInstances: true})
+		require.NoError(t, err)
+		defer emitter2.Stop()
+	})
+
+	t.Run("should allow starting multiple instances sequentially", func(t *testing.T) {
+		// Create and stop first emitter - should work
+		emitter1, err := NewEmitter(&statsdClientMock{}, &Options{})
+		require.NoError(t, err)
+		emitter1.Stop()
+
+		// Create and stop second emitter - should work
+		emitter2, err := NewEmitter(&statsdClientMock{}, &Options{})
+		require.NoError(t, err)
+		emitter2.Stop()
 	})
 }
 

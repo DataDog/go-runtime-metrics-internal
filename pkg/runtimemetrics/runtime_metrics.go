@@ -3,6 +3,7 @@ package runtimemetrics
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -10,6 +11,7 @@ import (
 	"runtime/metrics"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -32,10 +34,26 @@ type Options struct {
 	// [1] https://github.com/DataDog/datadog-go/blob/e612112c8bb396b33ad5d9edd645d289b07d0e40/statsd/options.go/#L23
 	// [2] https://docs.datadoghq.com/developers/dogstatsd/data_aggregation/#how-is-aggregation-performed-with-the-dogstatsd-server
 	Period time.Duration
+	// AllowMultipleInstances is used to allow multiple instances of the runtime
+	// metrics emitter to be started. This is useful in cases where the
+	// application is using multiple runtimemetrics.Emitter instances to report
+	// metrics to different statsd clients.
+	AllowMultipleInstances bool
 }
 
-// NewEmitter creates a new runtime metrics emitter and starts it.
-func NewEmitter(statsd partialStatsdClientInterface, opts *Options) *Emitter {
+// instances is used prevent multiple instances of the runtime metrics emitter
+// from being started concurrently by accident.
+var instances atomic.Int64
+
+// NewEmitter creates a new runtime metrics emitter and starts it. Unless
+// AllowMultipleInstances is set to true, it will return an error if an emitter
+// has already been started and not stopped yet. This is to prevent
+// accidental misconfigurations in larger systems.
+func NewEmitter(statsd partialStatsdClientInterface, opts *Options) (*Emitter, error) {
+	if n := instances.Add(1); n > 1 && !opts.AllowMultipleInstances {
+		instances.Add(-1)
+		return nil, errors.New("runtimemetrics has already been started")
+	}
 	if opts == nil {
 		opts = &Options{}
 	}
@@ -48,7 +66,7 @@ func NewEmitter(statsd partialStatsdClientInterface, opts *Options) *Emitter {
 		period:  cmp.Or(opts.Period, 10*time.Second),
 	}
 	go e.emit()
-	return e
+	return e, nil
 }
 
 // Emitter submits runtime/metrics to statsd on a regular interval.
@@ -101,6 +119,7 @@ func (e *Emitter) Stop() {
 	default:
 		close(e.stop)
 		<-e.stopped
+		instances.Add(-1)
 	}
 }
 
@@ -340,4 +359,12 @@ func datadogMetricName(runtimeName string) (string, error) {
 	// Note: This prefix is special. Don't change it without consulting the
 	// runtime/metrics squad.
 	return datadogMetricPrefix + name, nil
+}
+
+// Start starts reporting runtime/metrics to the given statsd client.
+//
+// Deprecated: Use NewEmitter instead.
+func Start(statsd partialStatsdClientInterface, logger *slog.Logger) error {
+	_, err := NewEmitter(statsd, &Options{Logger: logger})
+	return err
 }
