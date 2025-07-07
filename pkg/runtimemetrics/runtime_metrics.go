@@ -361,10 +361,27 @@ func datadogMetricName(runtimeName string) (string, error) {
 	return datadogMetricPrefix + name, nil
 }
 
+var startTags struct {
+	sync.Mutex
+	tags []string
+}
+
 // Start starts reporting runtime/metrics to the given statsd client.
 //
 // Deprecated: Use NewEmitter instead.
 func Start(statsd partialStatsdClientInterface, logger *slog.Logger) error {
-	_, err := NewEmitter(statsd, &Options{Logger: logger})
+	startTags.Lock()
+	defer startTags.Unlock()
+	_, err := NewEmitter(statsd, &Options{Logger: logger, Tags: startTags.tags})
 	return err
+}
+
+// SetBaseTags sets the base tags that will be added to all metrics when using
+// the Start function.
+//
+// Deprecated: Use NewEmitter with Options.Tags instead.
+func SetBaseTags(tags []string) {
+	startTags.Lock()
+	defer startTags.Unlock()
+	startTags.tags = tags
 }
