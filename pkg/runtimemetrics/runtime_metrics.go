@@ -50,12 +50,12 @@ var instances atomic.Int64
 // has already been started and not stopped yet. This is to prevent
 // accidental misconfigurations in larger systems.
 func NewEmitter(statsd partialStatsdClientInterface, opts *Options) (*Emitter, error) {
+	if opts == nil {
+		opts = &Options{}
+	}
 	if n := instances.Add(1); n > 1 && !opts.AllowMultipleInstances {
 		instances.Add(-1)
 		return nil, errors.New("runtimemetrics has already been started")
-	}
-	if opts == nil {
-		opts = &Options{}
 	}
 	e := &Emitter{
 		statsd:  statsd,
