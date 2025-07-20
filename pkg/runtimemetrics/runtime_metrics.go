@@ -82,7 +82,7 @@ type Emitter struct {
 
 // emit emits runtime/metrics to statsd on a regular interval.
 func (e *Emitter) emit() {
-	descs := metrics.All()
+	descs := supportedMetrics()
 	tags := append(getBaseTags(), e.tags...)
 	rms := newRuntimeMetricStore(descs, e.statsd, e.logger, tags)
 	// TODO: Go services experiencing high scheduling latency might see a
@@ -384,4 +384,78 @@ func SetBaseTags(tags []string) {
 	startTags.Lock()
 	defer startTags.Unlock()
 	startTags.tags = tags
+}
+
+// supportedMetrics returns the list of metrics that are supported.
+func supportedMetrics() []metrics.Description {
+	descs := metrics.All()
+	supported := make([]metrics.Description, 0, len(supportedMetricsTable))
+	for _, d := range descs {
+		if _, ok := supportedMetricsTable[d.Name]; ok {
+			supported = append(supported, d)
+		}
+	}
+	return supported
+}
+
+// supportedMetricsTable contains all metrics as of go1.24, except godebug
+// metrics to limit cardinality. New metrics are added manually b/c they need
+// to be registered in the backend first.
+var supportedMetricsTable = map[string]struct{}{
+	"/cgo/go-to-c-calls:calls":                     {},
+	"/cpu/classes/gc/mark/assist:cpu-seconds":      {},
+	"/cpu/classes/gc/mark/dedicated:cpu-seconds":   {},
+	"/cpu/classes/gc/mark/idle:cpu-seconds":        {},
+	"/cpu/classes/gc/pause:cpu-seconds":            {},
+	"/cpu/classes/gc/total:cpu-seconds":            {},
+	"/cpu/classes/idle:cpu-seconds":                {},
+	"/cpu/classes/scavenge/assist:cpu-seconds":     {},
+	"/cpu/classes/scavenge/background:cpu-seconds": {},
+	"/cpu/classes/scavenge/total:cpu-seconds":      {},
+	"/cpu/classes/total:cpu-seconds":               {},
+	"/cpu/classes/user:cpu-seconds":                {},
+	"/gc/cycles/automatic:gc-cycles":               {},
+	"/gc/cycles/forced:gc-cycles":                  {},
+	"/gc/cycles/total:gc-cycles":                   {},
+	"/gc/gogc:percent":                             {},
+	"/gc/gomemlimit:bytes":                         {},
+	"/gc/heap/allocs-by-size:bytes":                {},
+	"/gc/heap/allocs:bytes":                        {},
+	"/gc/heap/allocs:objects":                      {},
+	"/gc/heap/frees-by-size:bytes":                 {},
+	"/gc/heap/frees:bytes":                         {},
+	"/gc/heap/frees:objects":                       {},
+	"/gc/heap/goal:bytes":                          {},
+	"/gc/heap/live:bytes":                          {},
+	"/gc/heap/objects:objects":                     {},
+	"/gc/heap/tiny/allocs:objects":                 {},
+	"/gc/limiter/last-enabled:gc-cycle":            {},
+	"/gc/pauses:seconds":                           {},
+	"/gc/scan/globals:bytes":                       {},
+	"/gc/scan/heap:bytes":                          {},
+	"/gc/scan/stack:bytes":                         {},
+	"/gc/scan/total:bytes":                         {},
+	"/gc/stack/starting-size:bytes":                {},
+	"/memory/classes/heap/free:bytes":              {},
+	"/memory/classes/heap/objects:bytes":           {},
+	"/memory/classes/heap/released:bytes":          {},
+	"/memory/classes/heap/stacks:bytes":            {},
+	"/memory/classes/heap/unused:bytes":            {},
+	"/memory/classes/metadata/mcache/free:bytes":   {},
+	"/memory/classes/metadata/mcache/inuse:bytes":  {},
+	"/memory/classes/metadata/mspan/free:bytes":    {},
+	"/memory/classes/metadata/mspan/inuse:bytes":   {},
+	"/memory/classes/metadata/other:bytes":         {},
+	"/memory/classes/os-stacks:bytes":              {},
+	"/memory/classes/other:bytes":                  {},
+	"/memory/classes/profiling/buckets:bytes":      {},
+	"/memory/classes/total:bytes":                  {},
+	"/sched/gomaxprocs:threads":                    {},
+	"/sched/goroutines:goroutines":                 {},
+	"/sched/latencies:seconds":                     {},
+	"/sched/pauses/stopping/gc:seconds":            {},
+	"/sched/pauses/stopping/other:seconds":         {},
+	"/sched/pauses/total/gc:seconds":               {},
+	"/sched/pauses/total/other:seconds":            {},
+	"/sync/mutex/wait/total:seconds":               {},
 }
