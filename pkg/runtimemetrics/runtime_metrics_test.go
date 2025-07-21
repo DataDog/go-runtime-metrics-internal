@@ -219,8 +219,8 @@ func TestMetricKinds(t *testing.T) {
 // metrics and check that we don't crash or produce a very unexpected number of
 // metrics.
 func TestSmoke(t *testing.T) {
-	// Initialize store for all metrics with a mocked statsd client.
-	descs := metrics.All()
+	// Initialize store for supported metrics with a mocked statsd client.
+	descs := supportedMetrics()
 	mock := &statsdClientMock{}
 	rms := newRuntimeMetricStore(descs, mock, slog.Default(), []string{})
 
@@ -233,12 +233,9 @@ func TestSmoke(t *testing.T) {
 	// Flush the current metrics to our statsd mock.
 	rms.report()
 
-	// The exact number of statsd calls depends on the metric values and may
-	// also change as new version of Go are being released. So we assert that we
-	// get roughly the expected number of statsd calls (+/- 50%). This is meant
-	// to catch severe regression. Might need to be updated in the future if
-	// lots of new metrics are added.
-	assert.InDelta(t, 87, len(mock.GaugeCalls()), 87/2) // typically 87
+	// For histograms we emit multiple metrics, but we can expect at least as
+	// many gauge calls as we have supported metrics.
+	assert.Greater(t, len(mock.GaugeCalls()), len(supportedMetrics()))
 
 	assert.Positive(t, len(mock.DistributionSampleCalls()))
 }
