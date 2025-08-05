@@ -272,7 +272,7 @@ func main() {
 
 		if isHistogram(runtimeName) {
 			metrics = append(metrics, createMetric(
-				ddName, "distribution", unit, processDescription(description, runtimeName), orientation, shortName,
+				ddName, "gauge", unit, processDescription(description, runtimeName), orientation, shortName,
 			))
 
 			for _, stat := range histogramStats {
