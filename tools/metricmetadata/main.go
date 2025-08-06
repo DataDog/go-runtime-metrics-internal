@@ -145,6 +145,29 @@ func mapRuntimeUnit(runtimeUnit, runtimeName string) string {
 	return datadogUnit
 }
 
+// processDescription ensures descriptions fit within the backend's 400 character limit
+func processDescription(desc string, runtimeName string) string {
+	const maxLength = 400
+	const linkText = " For more information, see: https://pkg.go.dev/runtime/metrics."
+
+	if len(desc) <= maxLength {
+		return desc
+	}
+
+	// First sentence + link to see more information
+	if idx := strings.Index(desc, ". "); idx > 0 && len(desc[:idx+1]+linkText) <= maxLength {
+		return desc[:idx+1] + linkText
+	}
+
+	maxTextLength := maxLength - len(linkText) - 3
+	truncated := desc[:maxTextLength]
+	if lastSpace := strings.LastIndex(truncated, " "); lastSpace > 0 {
+		return truncated[:lastSpace] + "..." + linkText
+	}
+
+	return truncated + "..." + linkText // If no word boundary found
+}
+
 // getOrientation returns the orientation for a metric (-1, 0, or 1)
 func getOrientation(metricPath string) string {
 	// Lower is better (-1) for pause times, latencies, errors, and GC overhead
@@ -249,22 +272,23 @@ func main() {
 
 		if isHistogram(runtimeName) {
 			metrics = append(metrics, createMetric(
-				ddName, "distribution", unit, description, orientation, shortName,
+				ddName, "gauge", unit, processDescription(description, runtimeName), orientation, shortName,
 			))
 
 			for _, stat := range histogramStats {
+				statDescription := "(" + stat.descPrefix + ") " + description
 				metrics = append(metrics, createMetric(
 					ddName+"."+stat.suffix,
 					"gauge",
 					unit,
-					"("+stat.descPrefix+") "+description,
+					processDescription(statDescription, runtimeName),
 					orientation,
 					stat.suffix+" "+shortName,
 				))
 			}
 		} else {
 			metrics = append(metrics, createMetric(
-				ddName, "gauge", unit, description, orientation, shortName,
+				ddName, "gauge", unit, processDescription(description, runtimeName), orientation, shortName,
 			))
 		}
 	}
