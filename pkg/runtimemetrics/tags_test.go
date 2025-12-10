@@ -7,6 +7,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -125,5 +126,60 @@ func TestFormatByteSize(t *testing.T) {
 			result := formatByteSize(test.bytes)
 			assert.Equal(t, test.expected, result)
 		}
+	})
+}
+
+func TestTagRefresher(t *testing.T) {
+	newCountSource := func() func() []string {
+		count := 0
+		return func() []string {
+			count++
+			return []string{fmt.Sprintf("count:%d", count)}
+		}
+	}
+	newClock := func() (func() time.Time, func(time.Duration)) {
+		now := time.Now()
+		get := func() time.Time { return now }
+		add := func(d time.Duration) { now = now.Add(d) }
+		return get, add
+	}
+
+	t.Run("returns the correct tag on first call", func(t *testing.T) {
+		getTime, _ := newClock()
+		refresher := newTagCacher(1*time.Second, getTime, newCountSource())
+		tags := refresher()
+		assert.Equal(t, []string{"count:1"}, tags)
+	})
+
+	t.Run("caches the tag for the interval", func(t *testing.T) {
+		getTime, addTime := newClock()
+		refresher := newTagCacher(5*time.Second, getTime, newCountSource())
+
+		tags := refresher()
+		assert.Equal(t, []string{"count:1"}, tags)
+
+		addTime(time.Second)
+		tags = refresher()
+		assert.Equal(t, []string{"count:1"}, tags)
+
+		addTime(3 * time.Second)
+		tags = refresher()
+		assert.Equal(t, []string{"count:1"}, tags)
+	})
+
+	t.Run("updates the tag when the interval elapses", func(t *testing.T) {
+		getTime, addTime := newClock()
+		refresher := newTagCacher(5*time.Second, getTime, newCountSource())
+
+		tags := refresher()
+		assert.Equal(t, []string{"count:1"}, tags)
+
+		addTime(5 * time.Second)
+		tags = refresher()
+		assert.Equal(t, []string{"count:2"}, tags)
+
+		addTime(5 * time.Second)
+		tags = refresher()
+		assert.Equal(t, []string{"count:3"}, tags)
 	})
 }
