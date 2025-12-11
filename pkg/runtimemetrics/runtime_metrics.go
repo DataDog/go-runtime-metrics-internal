@@ -226,8 +226,8 @@ func (rms runtimeMetricStore) report() {
 	rms.update()
 	samples := []distributionSample{}
 
-	tags := rms.baseTags()
-	rms.statsd.GaugeWithTimestamp(datadogMetricPrefix+"enabled", 1, tags, 1, ts)
+	baseTags := rms.baseTags()
+	rms.statsd.GaugeWithTimestamp(datadogMetricPrefix+"enabled", 1, baseTags, 1, ts)
 	for name, rm := range rms.metrics {
 		switch rm.currentValue.Kind() {
 		case metrics.KindUint64:
@@ -250,8 +250,8 @@ func (rms runtimeMetricStore) report() {
 			// This is known to happen with the '/memory/classes/heap/unused:bytes' metric: https://github.com/golang/go/blob/go1.22.1/src/runtime/metrics.go#L364
 			// Until this bug is fixed, we log the problematic value and skip submitting that point to avoid spurious spikes in graphs.
 			if v > math.MaxUint64/2 {
-				tags := make([]string, 0, len(tags)+1)
-				tags = append(tags, tags...)
+				tags := make([]string, 0, len(baseTags)+1)
+				tags = append(tags, baseTags...)
 				tags = append(tags, "metric_name:"+rm.ddMetricName)
 				rms.statsd.CountWithTimestamp(datadogMetricPrefix+"skipped_values", 1, tags, 1, ts)
 
@@ -283,7 +283,7 @@ func (rms runtimeMetricStore) report() {
 				continue
 			}
 
-			rms.statsd.GaugeWithTimestamp(rm.ddMetricName, float64(v), tags, 1, ts)
+			rms.statsd.GaugeWithTimestamp(rm.ddMetricName, float64(v), baseTags, 1, ts)
 		case metrics.KindFloat64:
 			v := rm.currentValue.Float64()
 			// if the value didn't change between two reporting
@@ -295,7 +295,7 @@ func (rms runtimeMetricStore) report() {
 			if rm.cumulative && v != 0 && v == rm.previousValue.Float64() {
 				continue
 			}
-			rms.statsd.GaugeWithTimestamp(rm.ddMetricName, v, tags, 1, ts)
+			rms.statsd.GaugeWithTimestamp(rm.ddMetricName, v, baseTags, 1, ts)
 		case metrics.KindFloat64Histogram:
 			v := rm.currentValue.Float64Histogram()
 			var equal bool
@@ -315,17 +315,17 @@ func (rms runtimeMetricStore) report() {
 			values := make([]float64, len(distSamples))
 			for i, ds := range distSamples {
 				values[i] = ds.Value
-				rms.statsd.DistributionSamples(rm.ddMetricName, values[i:i+1], tags, ds.Rate)
+				rms.statsd.DistributionSamples(rm.ddMetricName, values[i:i+1], baseTags, ds.Rate)
 			}
 
 			stats := statsFromHist(v)
 			// TODO: Could/should we use datadog distribution metrics for this?
-			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".avg", stats.Avg, tags, 1, ts)
-			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".min", stats.Min, tags, 1, ts)
-			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".max", stats.Max, tags, 1, ts)
-			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".median", stats.Median, tags, 1, ts)
-			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".p95", stats.P95, tags, 1, ts)
-			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".p99", stats.P99, tags, 1, ts)
+			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".avg", stats.Avg, baseTags, 1, ts)
+			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".min", stats.Min, baseTags, 1, ts)
+			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".max", stats.Max, baseTags, 1, ts)
+			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".median", stats.Median, baseTags, 1, ts)
+			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".p95", stats.P95, baseTags, 1, ts)
+			rms.statsd.GaugeWithTimestamp(rm.ddMetricName+".p99", stats.P99, baseTags, 1, ts)
 		case metrics.KindBad:
 			// This should never happen because all metrics are supported
 			// by construction.
