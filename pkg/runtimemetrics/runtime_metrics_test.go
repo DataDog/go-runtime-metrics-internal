@@ -222,7 +222,7 @@ func TestSmoke(t *testing.T) {
 	// Initialize store for supported metrics with a mocked statsd client.
 	descs := supportedMetrics()
 	mock := &statsdClientMock{}
-	rms := newRuntimeMetricStore(descs, mock, slog.Default(), []string{})
+	rms := newRuntimeMetricStore(descs, mock, slog.Default(), nil)
 
 	// This poulates most runtime/metrics.
 	runtime.GC()
@@ -247,7 +247,7 @@ func BenchmarkReport(b *testing.B) {
 	// Initialize store for all metrics with a mocked statsd client.
 	descs := metrics.All()
 	mock := &statsdClientMock{Discard: true}
-	rms := newRuntimeMetricStore(descs, mock, slog.Default(), []string{})
+	rms := newRuntimeMetricStore(descs, mock, slog.Default(), nil)
 
 	// Benchmark report method
 	b.ReportAllocs()
@@ -264,7 +264,7 @@ func BenchmarkReport(b *testing.B) {
 func reportMetric(name string, kind metrics.ValueKind) (*statsdClientMock, runtimeMetricStore) {
 	desc := metricDesc(name, kind)
 	mock := &statsdClientMock{}
-	rms := newRuntimeMetricStore([]metrics.Description{desc}, mock, slog.Default(), []string{})
+	rms := newRuntimeMetricStore([]metrics.Description{desc}, mock, slog.Default(), nil)
 	// Populate Metrics. Test implicitly expect this to be the only GC cycle to happen before report is finished.
 	runtime.GC()
 	rms.report()
