@@ -410,7 +410,7 @@ func supportedMetrics() []metrics.Description {
 	return supported
 }
 
-// supportedMetricsTable contains all metrics as of go1.24, except godebug
+// supportedMetricsTable contains all metrics as of go1.26, except godebug
 // metrics to limit cardinality. New metrics are added manually b/c they need
 // to be registered in the backend first.
 var supportedMetricsTable = map[string]struct{}{
@@ -464,10 +464,16 @@ var supportedMetricsTable = map[string]struct{}{
 	"/memory/classes/total:bytes":                  {},
 	"/sched/gomaxprocs:threads":                    {},
 	"/sched/goroutines:goroutines":                 {},
+	"/sched/goroutines-created:goroutines":         {}, // go1.26+
+	"/sched/goroutines/not-in-go:goroutines":       {}, // go1.26+
+	"/sched/goroutines/runnable:goroutines":        {}, // go1.26+
+	"/sched/goroutines/running:goroutines":         {}, // go1.26+
+	"/sched/goroutines/waiting:goroutines":         {}, // go1.26+
 	"/sched/latencies:seconds":                     {},
 	"/sched/pauses/stopping/gc:seconds":            {},
 	"/sched/pauses/stopping/other:seconds":         {},
 	"/sched/pauses/total/gc:seconds":               {},
 	"/sched/pauses/total/other:seconds":            {},
+	"/sched/threads/total:threads":                 {}, // go1.26+
 	"/sync/mutex/wait/total:seconds":               {},
 }
